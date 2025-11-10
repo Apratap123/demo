@@ -1,4 +1,4 @@
-<!doctype html>
+<!-- <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -17,4 +17,241 @@
 
   <app-root></app-root>
 </body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Places Autocomplete + Lat/Lng + Timezone (Per-Session)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+
+    h1 { font-size: 20px; margin: 0 0 12px; }
+
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+    input { width: 360px; padding: 10px 12px; font-size: 16px; }
+
+    button { padding: 8px 12px; font-size: 14px; cursor: pointer; }
+
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-top: 16px; }
+
+    .label { color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+
+    pre { background: #f7f7f7; padding: 10px; border-radius: 6px; overflow: auto; }
+
+    .muted { color: #888; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Google Places Autocomplete → Lat/Lng + Timezone (Per-Session)</h1>
+
+  <div class="row">
+<input id="locationInput" type="text" placeholder="Start typing a place…" />
+<button id="resetBtn" type="button">New Search (Reset Session)</button>
+</div>
+<div class="muted">Billing model: <strong>Per-Session</strong> (charged once when a place is selected).</div>
+
+  <div class="card">
+<div class="label">Selected Address</div>
+<div id="address">—</div>
+</div>
+
+  <div class="card">
+<div class="label">Coordinates</div>
+<div>Lat: <span id="lat">—</span> &nbsp;|&nbsp; Lng: <span id="lng">—</span></div>
+</div>
+
+  <div class="card">
+<div class="label">Timezone</div>
+<div>timeZoneId: <span id="tzid">—</span></div>
+<div>timeZoneName: <span id="tzname">—</span></div>
+<div>rawOffset (sec): <span id="tzraw">—</span> &nbsp;|&nbsp; dstOffset (sec): <span id="tzdst">—</span></div>
+</div>
+
+  <div class="card">
+<div class="label">Address Components</div>
+<pre id="components">—</pre>
+</div>
+
+  <script>
+
+    // ========= CONFIG =========
+
+  const GOOGLE_API_KEY = "AIzaSyARd2KbRZv0moFHQxQHfpqlgPxwg29J664"; // ← replace
+
+    // ==========================
+
+    let autocomplete;
+
+    let sessionToken;
+
+    // Initialize Autocomplete with per-session billing
+
+    function initAutocomplete() {
+
+      const input = document.getElementById("locationInput");
+
+      // Create a new session token (VERY IMPORTANT for per-session billing)
+
+      sessionToken = new google.maps.places.AutocompleteSessionToken();
+
+      autocomplete = new google.maps.places.Autocomplete(input, {
+
+        // Request only what you need (saves payload, faster)
+
+        fields: ["place_id", "geometry", "formatted_address", "address_components"],
+
+        sessionToken: sessionToken,
+
+      });
+
+      autocomplete.addListener("place_changed", onPlaceSelected);
+
+      document.getElementById("resetBtn").addEventListener("click", () => {
+
+        input.value = "";
+
+        resetUI();
+
+        // Start a brand new session for next search
+
+        sessionToken = new google.maps.places.AutocompleteSessionToken();
+
+        // Reattach token to the same Autocomplete instance (optional — Google will use the latest token for subsequent fetches)
+
+        autocomplete.setOptions({ sessionToken });
+
+      });
+
+    }
+
+    function onPlaceSelected() {
+
+      const place = autocomplete.getPlace();
+
+      if (!place || !place.geometry || !place.geometry.location) {
+
+        alert("No geometry returned for this place.");
+
+        return;
+
+      }
+
+      // Geometry
+
+      const lat = place.geometry.location.lat();
+
+      const lng = place.geometry.location.lng();
+
+      // UI updates
+
+      document.getElementById("address").textContent = place.formatted_address || "—";
+
+      document.getElementById("lat").textContent = lat.toFixed(6);
+
+      document.getElementById("lng").textContent = lng.toFixed(6);
+
+      // Show address components (pretty)
+
+      const components = (place.address_components || []).map(c => ({
+
+        long_name: c.long_name,
+
+        short_name: c.short_name,
+
+        types: c.types
+
+      }));
+
+      document.getElementById("components").textContent = JSON.stringify(components, null, 2);
+
+      // Fetch timezone using Time Zone API
+
+      fetchTimezone(lat, lng)
+
+        .catch(err => {
+
+          console.error("Timezone fetch error:", err);
+
+          document.getElementById("tzid").textContent = "Error";
+
+          document.getElementById("tzname").textContent = "Error";
+
+          document.getElementById("tzraw").textContent = "—";
+
+          document.getElementById("tzdst").textContent = "—";
+
+        });
+
+      // After a selection, consume this session and prepare the next one
+
+      sessionToken = new google.maps.places.AutocompleteSessionToken();
+
+      autocomplete.setOptions({ sessionToken });
+
+    }
+
+    async function fetchTimezone(lat, lng) {
+
+      const timestamp = Math.floor(Date.now() / 1000); // seconds
+
+  const url = `https://maps.googleapis.com/maps/api/timezone/json?location=${lat},${lng}&timestamp=${timestamp}&key=${GOOGLE_API_KEY}`;
+
+      const res = await fetch(url);
+
+      const data = await res.json();
+
+      if (data.status !== "OK") {
+
+        throw new Error(`Time Zone API error: ${data.status} - ${data.errorMessage || ""}`);
+
+      }
+
+      document.getElementById("tzid").textContent = data.timeZoneId || "—";
+
+      document.getElementById("tzname").textContent = data.timeZoneName || "—";
+
+      document.getElementById("tzraw").textContent = data.rawOffset ?? "—";
+
+      document.getElementById("tzdst").textContent = data.dstOffset ?? "—";
+
+    }
+
+    function resetUI() {
+
+      document.getElementById("address").textContent = "—";
+
+      document.getElementById("lat").textContent = "—";
+
+      document.getElementById("lng").textContent = "—";
+
+      document.getElementById("tzid").textContent = "—";
+
+      document.getElementById("tzname").textContent = "—";
+
+      document.getElementById("tzraw").textContent = "—";
+
+      document.getElementById("tzdst").textContent = "—";
+
+      document.getElementById("components").textContent = "—";
+
+    }
+</script>
+
+<script
+
+
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyARd2KbRZv0moFHQxQHfpqlgPxwg29J664&libraries=places&callback=initAutocomplete" async defer>
+</script>
+
+
+
+
+</body>
 </html>
+
