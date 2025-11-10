@@ -1,0 +1,25 @@
+/* Styles adapted from the provided HTML sample */
+:host {
+  display: block;
+  padding: 25px;
+  background-color: #f0f1f3;
+  font-family: "Arial", sans-serif;
+  min-height: 100vh;
+}
+
+#place-picker-box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 50vh;
+}
+
+#place-picker-container {
+  text-align: left;
+}
+
+/* Optional: Style the place-picker web component */
+gmpx-place-picker {
+  min-width: 300px;
+  font-size: 16px;
+}
